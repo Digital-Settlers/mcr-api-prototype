@@ -1,27 +1,33 @@
 /**
  * API endpoints
  */
-const authEndpoint = "https://auth.teamgantt.com/oauth2/token";
-const apiBaseEndpoint = "https://api.teamgantt.com/v1";
+const authEndpoint = "https://login.wrike.com/oauth2/token";
+const apiBaseEndpoint = "https://www.wrike.com/api/v4";
 
 /**
- * TeamGantt credentials
+ * Wrike credentials
  */
-// const authUsername = "username utente TeamGantt";
-// const authPassword = "password utente TeamGantt";
-const companyID = 1973722;
+// const wrikeAuthUsername = "username utente Wrike";
+// const wrikeAuthPassword = "password utente Wrike";
+const rootFolderID = "IEAFTKXTI46MGBYJ";
+const testUserID = "KUAPJSQV";
 
 /**
- * Teamgantt API authentication
+ * Wrike API authentication
  */
-// const clientID = "ClientID App TeamGantt";
-// const clientSecret =	"ClientSecret App TeamGantt";
-const authHeader = `Basic ${btoa([clientID, clientSecret].join(":"))}`;
+// const wrikeClientID = "wrikeClientID App Wrike";
+// const wrikeClientSecret = "wrikeClientSecret App Wrike";
+const authHeader = `Basic ${btoa(
+	[wrikeClientID, wrikeClientSecret].join(":")
+)}`;
 
 /**
  * Authentication token
  */
-let authData = null;
+// let authData = null;
+let authData = {
+	id_token: wrikeAuthToken,
+};
 
 /**
  * DOM elements
@@ -39,10 +45,11 @@ const canvas = document.getElementById("canvas");
  */
 buttonAllProjects.addEventListener("click", async () => {
 	const data = await getProjects();
-	const projects = data.projects;
+	console.log(data);
+	const projects = data.data;
 	let message = `<p>Progetti:</p><ul>`;
 	for (const project of projects) {
-		message += `<li>${project.name} - ${project.id}</li>`;
+		message += `<li>${project.title} - ${project.id}</li>`;
 	}
 	message += `</ul>`;
 	displayMessage(message);
@@ -50,9 +57,10 @@ buttonAllProjects.addEventListener("click", async () => {
 
 buttonCreateProject.addEventListener("click", async () => {
 	const projectName = prompt("Inserisci il nome del progetto");
-	const project = await createProject(projectName);
+	const data = await createProject(projectName);
+	const project = data.data[0];
 	let message = `<p>Progetto creato:</p><ul>`;
-	message += `<li>Nome: ${project.name}</li>`;
+	message += `<li>Nome: ${project.title}</li>`;
 	message += `<li>ID: ${project.id}</li>`;
 	message += `</ul>`;
 	displayMessage(message);
@@ -60,12 +68,14 @@ buttonCreateProject.addEventListener("click", async () => {
 
 buttonAllTasks.addEventListener("click", async () => {
 	const projectID = prompt("Inserisci l'id del progetto");
-	const tasks = await getTasks(projectID);
+	const data = await getTasks(projectID);
+	const tasks = data.data;
 	let message = `<p>Tasks:</p><ul>`;
 	for (const task of tasks) {
-		const estimated_hours = parseFloat(task.estimated_hours).toFixed(2);
+		// const estimated_hours = parseFloat(task.estimated_hours).toFixed(2);
+		const estimated_hours = 0;
 		const worked_hours = await (await getHours(task.id)).toFixed(2);
-		message += `<li>${task.name}(${task.id}) - Ore stimate: ${estimated_hours} - Ore lavorate: ${worked_hours}</li>`;
+		message += `<li>${task.title}(${task.id}) - Ore stimate: ${estimated_hours} - Ore lavorate: ${worked_hours}</li>`;
 	}
 	message += `</ul>`;
 	displayMessage(message);
@@ -74,10 +84,10 @@ buttonAllTasks.addEventListener("click", async () => {
 buttonCreateTask.addEventListener("click", async () => {
 	const projectID = prompt("Inserisci l'ID del progetto");
 	const taskName = prompt("Inserisci il nome del task");
-	const taskType = "task";
-	const task = await createTask(projectID, taskName, taskType);
+	const data = await createTask(projectID, taskName);
+	const task = data.data[0];
 	let message = `<p>Progetto creato:</p><ul>`;
-	message += `<li>Nome: ${task.name}</li>`;
+	message += `<li>Nome: ${task.title}</li>`;
 	message += `<li>ID: ${task.id}</li>`;
 	message += `</ul>`;
 	displayMessage(message);
@@ -86,14 +96,14 @@ buttonCreateTask.addEventListener("click", async () => {
 buttonAddHours.addEventListener("click", async () => {
 	const taskID = prompt("Inserisci l'id del task");
 	const hours = prompt("Inserisci le ore da aggiungere");
-	const endDate = new Date();
-	const startDate = new Date(endDate - hours * 60 * 60 * 1000);
-	const task = await addHours(taskID, startDate, endDate);
+	const trackedDate = apiFormatDate(new Date());
+	const data = await addHours(taskID, hours, trackedDate);
+	const task = data.data[0];
 	const worked_hours = await (await getHours(taskID)).toFixed(2);
 	let message = `<p>Task aggiornato:</p><ul>`;
-	message += `<li>Nome: ${task.task_name}</li>`;
 	message += `<li>ID: ${task.id}</li>`;
-	message += `<li>Ore lavorate: ${worked_hours}</li>`;
+	message += `<li>Ore aggiunte: ${task.hours}</li>`;
+	message += `<li>Totale ore lavorate: ${worked_hours}</li>`;
 	message += `</ul>`;
 	displayMessage(message);
 });
@@ -160,8 +170,8 @@ async function authenticate() {
 		}),
 		body: new URLSearchParams({
 			grant_type: "password",
-			username: authUsername,
-			password: authPassword,
+			username: wrikeAuthUsername,
+			password: wrikeAuthPassword,
 		}),
 	});
 	if (!response.ok) {
@@ -174,69 +184,69 @@ async function authenticate() {
 }
 
 async function getProjects() {
-	const data = await callApi("/projects/all?fields=name");
+	const data = await callApi("/folders?project=true");
 	return data;
 }
 
 async function createProject(name) {
-	const data = await callApi(
-		"/projects",
-		"POST",
-		JSON.stringify({
-			name: name,
-			company_id: companyID,
-		})
-	);
+	const params = new URLSearchParams({
+		title: name,
+		project: JSON.stringify({
+			// ownerIds: ["KUAPJQZJ"],
+			// startDate: "2021-01-01",
+			// endDate: "2021-12-31",
+			// status: "Green",
+		}),
+	});
+	const apiURL = `/folders/${rootFolderID}/folders?${params.toString()}`;
+	const data = await callApi(apiURL, "POST");
+	console.log(data);
 	return data;
 }
 
 async function getTasks(projectID) {
-	const data = await callApi(`/tasks?project_ids=${projectID}`);
+	const data = await callApi(`/folders/${projectID}/tasks?descendants=true`);
 	return data;
 }
 
-async function createTask(projectID, taskName, taskType) {
+async function createTask(projectID, taskName) {
+	const params = new URLSearchParams({
+		title: taskName,
+	});
 	const data = await callApi(
-		"/tasks",
-		"POST",
-		JSON.stringify({
-			project_id: parseInt(projectID),
-			name: taskName,
-			type: taskType,
-		})
+		`/folders/${projectID}/tasks?${params.toString()}`,
+		"POST"
 	);
 	return data;
 }
 
-async function addHours(taskID, startDate, endDate) {
+async function addHours(taskID, hours, trackedDate) {
+	const params = new URLSearchParams({
+		hours: hours,
+		trackedDate: trackedDate,
+		onBehalfOf: testUserID,
+	});
 	const data = await callApi(
-		"/times",
-		"POST",
-		JSON.stringify({
-			task_id: taskID,
-			start_time: apiFormatDate(startDate),
-			end_time: apiFormatDate(endDate),
-		})
+		`/tasks/${taskID}/timelogs?${params.toString()}`,
+		"POST"
 	);
 	return data;
 }
 
 async function getHours(taskID) {
-	const timeblocks = await getTimeblocks(taskID);
-	let seconds = 0;
+	const data = await getTimeblocks(taskID);
+	const timeblocks = data.data;
+	let hours = 0;
 	timeblocks.forEach((timeblock) => {
-		if (timeblock.end_time && timeblock.start_time) {
-			const endTime = new Date(timeblock.end_time);
-			const startTime = new Date(timeblock.start_time);
-			const timeDiff = endTime - startTime;
-			seconds += timeDiff;
+		if (timeblock.hours) {
+			hours += timeblock.hours;
 		}
 	});
-	return parseFloat(seconds / 1000 / 60 / 60);
+	return parseFloat(hours);
 }
 
 async function getTimeblocks(taskID) {
-	const data = await callApi(`/tasks/${taskID}/timeblocks`);
+	const data = await callApi(`/tasks/${taskID}/timelogs`);
 	return data;
 }
 
@@ -244,8 +254,5 @@ function apiFormatDate(date) {
 	const year = date.getFullYear();
 	const month = date.getMonth() + 1;
 	const day = date.getDate();
-	const hours = date.getHours();
-	const minutes = date.getMinutes();
-	const seconds = date.getSeconds();
-	return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+	return `${year}-${month}-${day}`;
 }
